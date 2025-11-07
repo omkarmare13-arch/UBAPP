@@ -23,6 +23,41 @@ st.set_page_config(
 )
 
 
+# ---------------- Theming / Styling ----------------
+def inject_global_css():
+    st.markdown(
+        """<style>
+        /* Make background a bit darker and cards cleaner */
+        .main {
+            background: radial-gradient(circle at top left, #1f2933, #020617);
+            color: #e5e7eb;
+        }
+        [data-testid="stMetric"] {
+            background-color: #020617;
+            padding: 12px 16px;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(148,163,184,0.4);
+        }
+        .kpi-card {
+            padding: 1rem 1.25rem;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(148,163,184,0.4);
+            background: rgba(15,23,42,0.8);
+        }
+        .section-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        .section-subtitle {
+            font-size: 0.85rem;
+            color: #9ca3af;
+            margin-bottom: 0.75rem;
+        }
+        </style>""", unsafe_allow_html=True
+    )
+
+
 # ---------------- Utility functions ----------------
 def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -74,7 +109,6 @@ def prepare_features(df: pd.DataFrame):
     if target_col is None:
         raise ValueError("Could not find 'PersonalLoan' column in data.")
 
-    # ID is dropped if present
     drop_cols = [c for c in [col_map["ID"]] if c is not None]
 
     feature_cols = [
@@ -103,9 +137,9 @@ def prepare_features(df: pd.DataFrame):
     return X, y, feature_cols, col_map, target_col, model_df
 
 
-def train_and_evaluate_models(X, y):
+def train_and_evaluate_models(X, y, test_size=0.30, random_state=42):
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.30, random_state=42, stratify=y
+        X, y, test_size=test_size, random_state=random_state, stratify=y
     )
 
     models = {
@@ -174,9 +208,12 @@ def train_and_evaluate_models(X, y):
 
 
 # ---------------- Plotting helpers ----------------
-def plot_roc_curves(roc_curves):
+def plot_roc_curves(roc_curves, selected=None):
     fig, ax = plt.subplots(figsize=(7, 5))
-    for name, (fpr, tpr, auc_val) in roc_curves.items():
+    if selected is None:
+        selected = list(roc_curves.keys())
+    for name in selected:
+        fpr, tpr, auc_val = roc_curves[name]
         ax.plot(fpr, tpr, label=f"{name} (AUC={auc_val:.3f})")
     ax.plot([0, 1], [0, 1], "k--", label="Chance")
     ax.set_xlabel("False Positive Rate")
@@ -188,16 +225,18 @@ def plot_roc_curves(roc_curves):
     return fig
 
 
-def plot_confusion_matrices(conf_matrices):
+def plot_confusion_matrices(conf_matrices, focus=None):
     algorithms = list(conf_matrices.keys())
-    splits = ["train", "test"]
+    if focus is not None and focus in algorithms:
+        algorithms = [focus]
 
+    splits = ["train", "test"]
     fig, axes = plt.subplots(
-        nrows=len(algorithms), ncols=len(splits), figsize=(10, 10)
+        nrows=len(algorithms), ncols=len(splits), figsize=(10, 4 * len(algorithms))
     )
 
     if len(algorithms) == 1:
-        axes = np.array([[axes[0], axes[1]]])
+        axes = np.array([axes])
 
     for i, algo in enumerate(algorithms):
         for j, split in enumerate(splits):
@@ -404,14 +443,16 @@ def chart_feature_corr_with_target(model_df, col_map, feature_cols):
 
 
 # ---------------- MAIN APP LAYOUT ----------------
-st.title("Personal Loan Propensity & Customer Insight Dashboard")
+inject_global_css()
 
-st.markdown('''
-As **Head of Marketing**, use this app to:
-- Understand which customer segments are most likely to accept a *personal loan*.
-- Compare machine learning models (Decision Tree, Random Forest, Gradient Boosting).
-- Score new customer lists and download predictions for campaigns.
-''')
+st.markdown(
+    "<h1 style='margin-bottom:0.25rem;'>📊 Personal Loan Propensity & Customer Insight Dashboard</h1>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "<p style='color:#9ca3af; margin-bottom:1.5rem;'>Designed for Heads of Marketing to discover high-conversion customer segments and compare ML models for personal loan campaigns.</p>",
+    unsafe_allow_html=True,
+)
 
 base_df = load_base_data()
 
@@ -425,6 +466,29 @@ model_df = None
 if base_df is not None:
     X, y, feature_cols, col_map, target_col, model_df = prepare_features(base_df)
 
+# KPI row
+if model_df is not None and target_col is not None:
+    total_customers = len(model_df)
+    loan_rate = model_df[target_col].mean() if total_customers > 0 else 0
+    income_col = col_map.get("Income")
+    avg_income = model_df[income_col].mean() if income_col is not None else 0
+    cc_col = col_map.get("CCAvg")
+    avg_cc = model_df[cc_col].mean() if cc_col is not None else 0
+
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.metric("Total Customers", f"{total_customers:,}")
+    with k2:
+        st.metric("Loan Acceptance Rate", f"{loan_rate*100:.1f}%")
+    with k3:
+        st.metric("Average Income ($000)", f"{avg_income:.1f}")
+    with k4:
+        st.metric("Avg CC Spend ($000)", f"{avg_cc:.1f}")
+else:
+    st.info("Upload or place 'UniversalBank.csv' next to app.py to enable full insights and modeling.")
+
+st.markdown("---")
+
 tab1, tab2, tab3 = st.tabs(
     [
         "1️⃣ Customer Insights",
@@ -435,60 +499,88 @@ tab1, tab2, tab3 = st.tabs(
 
 # ---- TAB 1: Customer Insights ----
 with tab1:
-    st.subheader("Customer Insights for Better Marketing Actions")
+    st.markdown("<div class='section-title'>Customer Insights for Better Marketing Actions</div>", unsafe_allow_html=True)
     if model_df is None or not feature_cols:
         st.error("Base dataset is missing. Please ensure 'UniversalBank.csv' is in the same folder as app.py in your GitHub repo.")
     else:
-        st.markdown('''
-Below charts combine multiple variables so that you can design **sharper targeting rules**,
-e.g. *income × education*, *digital usage × cards*, etc.
-''')
+        st.markdown(
+            "<div class='section-subtitle'>Explore how income, education, digital behaviour and product holding impact personal loan uptake.</div>",
+            unsafe_allow_html=True,
+        )
+
+        insight_choice = st.radio(
+            "Choose insight focus",
+            [
+                "Income & Education",
+                "Credit Card Spend & CD Account",
+                "Age & Family Heatmap",
+                "Digital & Card Segments",
+                "Feature–Target Correlation",
+                "Show All",
+            ],
+            horizontal=True,
+        )
 
         col_a, col_b = st.columns(2)
 
-        with col_a:
-            st.markdown("#### 1. Conversion by Income Quintile & Education")
-            fig1 = chart_conversion_by_income_education(model_df, col_map)
-            st.pyplot(fig1)
+        if insight_choice in ["Income & Education", "Show All"]:
+            with col_a:
+                st.markdown("#### 1. Conversion by Income Quintile & Education")
+                fig1 = chart_conversion_by_income_education(model_df, col_map)
+                st.pyplot(fig1)
 
-        with col_b:
-            st.markdown("#### 2. Conversion by Credit Card Spend & CD Account")
-            fig2 = chart_conversion_by_ccavg_cd(model_df, col_map)
-            st.pyplot(fig2)
+        if insight_choice in ["Credit Card Spend & CD Account", "Show All"]:
+            with col_b:
+                st.markdown("#### 2. Conversion by Credit Card Spend & CD Account")
+                fig2 = chart_conversion_by_ccavg_cd(model_df, col_map)
+                st.pyplot(fig2)
 
         col_c, col_d = st.columns(2)
 
-        with col_c:
-            st.markdown("#### 3. Conversion Heatmap: Age Band vs Family Size")
-            fig3 = chart_heatmap_age_family(model_df, col_map)
-            st.pyplot(fig3)
+        if insight_choice in ["Age & Family Heatmap", "Show All"]:
+            with col_c:
+                st.markdown("#### 3. Conversion Heatmap: Age Band vs Family Size")
+                fig3 = chart_heatmap_age_family(model_df, col_map)
+                st.pyplot(fig3)
 
-        with col_d:
-            st.markdown("#### 4. Digital & Card Segments: Conversion & Volume")
-            fig4 = chart_online_creditcard_segments(model_df, col_map)
-            st.pyplot(fig4)
+        if insight_choice in ["Digital & Card Segments", "Show All"]:
+            with col_d:
+                st.markdown("#### 4. Digital & Card Segments: Conversion & Volume")
+                fig4 = chart_online_creditcard_segments(model_df, col_map)
+                st.pyplot(fig4)
 
-        st.markdown("#### 5. Correlation of Features with Personal Loan")
-        fig5 = chart_feature_corr_with_target(model_df, col_map, feature_cols)
-        st.pyplot(fig5)
+        if insight_choice in ["Feature–Target Correlation", "Show All"]:
+            st.markdown("#### 5. Correlation of Features with Personal Loan")
+            fig5 = chart_feature_corr_with_target(model_df, col_map, feature_cols)
+            st.pyplot(fig5)
 
-        st.info(
-            "Focus campaigns on segments with high conversion rate but medium customer count "
-            "(e.g. high-income + advanced education, high CCAvg + CDAccount) to get quick wins."
-        )
+        with st.expander("💡 How can I use these insights for campaigns?"):
+            st.markdown(
+                """
+- **High income + advanced education** segments with high conversion can be targeted with premium loan offers.
+- **High CCAvg + CDAccount holders** often show strong cross-sell potential – ideal for relationship-based campaigns.
+- **Digital + Card-heavy segments** (Online & Credit Card users) are perfect for **email + in-app** journeys.
+- Use the **Age × Family heatmap** to craft life-stage messaging (e.g., education loans, renovation loans).
+"""
+            )
 
 
 # ---- TAB 2: Model Performance ----
 with tab2:
-    st.subheader("Apply All Three Algorithms & Compare Performance")
+    st.markdown("<div class='section-title'>Apply All Three Algorithms & Compare Performance</div>", unsafe_allow_html=True)
     if X is None or y is None:
         st.error("Base dataset is missing. Please ensure 'UniversalBank.csv' is in the same folder as app.py in your GitHub repo.")
     else:
-        st.markdown('''
-Click the button below to train **Decision Tree**, **Random Forest** and
-**Gradient Boosting** on the Universal Bank data, using 70/30 train-test split and
-**5-fold cross validation** on the training set.
-''')
+        st.markdown(
+            "<div class='section-subtitle'>Tune the train/test split and compare Decision Tree, Random Forest and Gradient Boosting using accuracy, AUC and confusion matrices.</div>",
+            unsafe_allow_html=True,
+        )
+
+        col_cfg1, col_cfg2 = st.columns(2)
+        with col_cfg1:
+            test_size = st.slider("Test size (%)", min_value=20, max_value=40, value=30, step=5) / 100.0
+        with col_cfg2:
+            random_state = st.number_input("Random seed", min_value=0, max_value=10_000, value=42, step=1)
 
         if st.button("🚀 Run / Re-run Models"):
             (
@@ -498,49 +590,75 @@ Click the button below to train **Decision Tree**, **Random Forest** and
                 conf_matrices,
                 feature_importances,
                 split_data,
-            ) = train_and_evaluate_models(X, y)
+            ) = train_and_evaluate_models(X, y, test_size=test_size, random_state=random_state)
 
             st.markdown("### 1. Performance Summary Table")
             st.dataframe(metrics_df.style.format("{:.4f}"))
 
-            st.markdown("### 2. ROC Curve (Test Set, All Models)")
-            fig_roc = plot_roc_curves(roc_curves)
-            st.pyplot(fig_roc)
+            # Small KPI strip for best model by AUC(Test)
+            best_algo = metrics_df["AUC (Test)"].idxmax()
+            best_auc = metrics_df.loc[best_algo, "AUC (Test)"]
+            best_recall = metrics_df.loc[best_algo, "Recall"]
+            k1, k2, k3 = st.columns(3)
+            with k1:
+                st.metric("Champion Model", best_algo)
+            with k2:
+                st.metric("Champion AUC (Test)", f"{best_auc:.3f}")
+            with k3:
+                st.metric("Champion Recall", f"{best_recall:.3f}")
+
+            st.markdown("### 2. ROC Curve (Test Set)")
+            algo_select = st.multiselect(
+                "Select algorithms to display on ROC curve",
+                list(roc_curves.keys()),
+                default=list(roc_curves.keys())
+            )
+            if algo_select:
+                fig_roc = plot_roc_curves(roc_curves, selected=algo_select)
+                st.pyplot(fig_roc)
+            else:
+                st.info("Select at least one algorithm to view the ROC curve.")
 
             st.markdown("### 3. Confusion Matrices (Train & Test)")
-            fig_cm = plot_confusion_matrices(conf_matrices)
+            focus_algo = st.selectbox(
+                "Focus on specific algorithm (optional)",
+                ["All"] + list(conf_matrices.keys()),
+                index=0
+            )
+            focus_param = None if focus_algo == "All" else focus_algo
+            fig_cm = plot_confusion_matrices(conf_matrices, focus=focus_param)
             st.pyplot(fig_cm)
 
             st.markdown("### 4. Feature Importances")
             fig_fi = plot_feature_importances(feature_importances, feature_cols)
             st.pyplot(fig_fi)
 
-            st.info(
-                "Use the **AUC (Test)** and **Recall** columns to select the best model "
-                "for maximizing loan conversions."
-            )
+            with st.expander("📌 Interpretation Tips"):
+                st.markdown(
+                    """
+- **Use AUC(Test)** to choose the most robust model overall.
+- **Recall** is critical if you care about catching as many potential loan takers as possible.
+- Compare **feature importances** across models – stable top features (Income, CCAvg, CDAccount, etc.) are strong drivers for campaign design.
+"""
+                )
         else:
-            st.warning("Click **Run / Re-run Models** to generate metrics and charts.")
+            st.warning("Set your configuration and click **Run / Re-run Models** to generate metrics and charts.")
 
 
 # ---- TAB 3: New Data Scoring ----
 with tab3:
-    st.subheader("Upload New Customer File & Predict Personal Loan Propensity")
-    st.markdown('''
-Upload a **CSV file** with the same structure as the original UniversalBank data
-(ID, Age, Experience, Income, Family, CCAvg, Education, Mortgage, Securities, CDAccount,
-Online, CreditCard, etc.).  
-
-The app will train all three models again on the original data and then use the
-**best model (highest Test AUC)** to score the uploaded file.
-''')
+    st.markdown("<div class='section-title'>Upload New Customer File & Predict Personal Loan Propensity</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='section-subtitle'>Score fresh customer lists using the best-performing model and download a ready-to-use file for campaigns.</div>",
+        unsafe_allow_html=True,
+    )
 
     uploaded_file = st.file_uploader("Upload new customer CSV", type=["csv"])
 
     if uploaded_file is not None:
         new_df_raw = pd.read_csv(uploaded_file)
         new_df = standardize_columns(new_df_raw)
-        st.markdown("Preview of uploaded data:")
+        st.markdown("##### Preview of uploaded data")
         st.dataframe(new_df_raw.head())
 
         if X is None or y is None:
@@ -568,7 +686,9 @@ The app will train all three models again on the original data and then use the
             else:
                 X_new = new_df[feature_cols]
                 proba = best_model.predict_proba(X_new)[:, 1]
-                pred = (proba >= 0.5).astype(int)
+                # Allow user to adjust decision threshold interactively
+                threshold = st.slider("Decision threshold for classifying as 'Will take loan'", 0.1, 0.9, 0.5, 0.05)
+                pred = (proba >= threshold).astype(int)
 
                 scored = new_df_raw.copy()
                 scored["PredictedPersonalLoan"] = pred
@@ -576,6 +696,9 @@ The app will train all three models again on the original data and then use the
 
                 st.markdown("### Sample of Scored Customers")
                 st.dataframe(scored.head())
+
+                high_prop = (proba >= threshold).mean() * 100.0
+                st.metric("Share of customers above threshold", f"{high_prop:.1f}%")
 
                 csv_bytes = scored.to_csv(index=False).encode("utf-8")
                 st.download_button(
@@ -585,9 +708,13 @@ The app will train all three models again on the original data and then use the
                     mime="text/csv",
                 )
 
-                st.info(
-                    "Filter customers with **LoanProbability >= 0.7** to build a "
-                    "high-propensity campaign list."
-                )
+                with st.expander("How to use this file in campaigns"):
+                    st.markdown(
+                        """
+- Filter customers with **LoanProbability above your chosen threshold** for high-intent targeting.
+- Combine propensity with **Income, CCAvg and product holdings** to create differentiated offer tiers.
+- Export to your CRM or marketing automation tool to trigger **email/SMS/app** journeys.
+"""
+                    )
     else:
         st.warning("Please upload a CSV file to score new customers.")
