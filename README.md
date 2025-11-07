@@ -1,4 +1,3 @@
-
 # Personal Loan Propensity Streamlit App
 
 This app builds a full **marketing & data science dashboard** for the Universal Bank

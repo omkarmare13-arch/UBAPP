@@ -38,9 +38,17 @@ def pick_column(df: pd.DataFrame, candidates):
 
 
 def load_base_data():
-    df = pd.read_csv("UniversalBank.csv")
-    df = standardize_columns(df)
-    return df
+    """Load UniversalBank.csv if available; otherwise show a warning and return None."""
+    try:
+        df = pd.read_csv("UniversalBank.csv")
+        df = standardize_columns(df)
+        return df
+    except FileNotFoundError:
+        st.warning(
+            "Base dataset 'UniversalBank.csv' was not found in the app folder. "
+            "Please make sure the file is in the same directory as app.py in your GitHub repo."
+        )
+        return None
 
 
 def prepare_features(df: pd.DataFrame):
@@ -64,9 +72,9 @@ def prepare_features(df: pd.DataFrame):
 
     target_col = col_map["PersonalLoan"]
     if target_col is None:
-        raise ValueError("Could not find 'Personal Loan' column in data.")
+        raise ValueError("Could not find 'PersonalLoan' column in data.")
 
-    # drop ID if present
+    # ID is dropped if present
     drop_cols = [c for c in [col_map["ID"]] if c is not None]
 
     feature_cols = [
@@ -406,7 +414,16 @@ As **Head of Marketing**, use this app to:
 ''')
 
 base_df = load_base_data()
-X, y, feature_cols, col_map, target_col, model_df = prepare_features(base_df)
+
+# Initialise placeholders in case dataset is missing
+X = y = None
+feature_cols = []
+col_map = {}
+target_col = None
+model_df = None
+
+if base_df is not None:
+    X, y, feature_cols, col_map, target_col, model_df = prepare_features(base_df)
 
 tab1, tab2, tab3 = st.tabs(
     [
@@ -419,85 +436,91 @@ tab1, tab2, tab3 = st.tabs(
 # ---- TAB 1: Customer Insights ----
 with tab1:
     st.subheader("Customer Insights for Better Marketing Actions")
-    st.markdown('''
+    if model_df is None or not feature_cols:
+        st.error("Base dataset is missing. Please ensure 'UniversalBank.csv' is in the same folder as app.py in your GitHub repo.")
+    else:
+        st.markdown('''
 Below charts combine multiple variables so that you can design **sharper targeting rules**,
 e.g. *income × education*, *digital usage × cards*, etc.
 ''')
 
-    col_a, col_b = st.columns(2)
+        col_a, col_b = st.columns(2)
 
-    with col_a:
-        st.markdown("#### 1. Conversion by Income Quintile & Education")
-        fig1 = chart_conversion_by_income_education(model_df, col_map)
-        st.pyplot(fig1)
+        with col_a:
+            st.markdown("#### 1. Conversion by Income Quintile & Education")
+            fig1 = chart_conversion_by_income_education(model_df, col_map)
+            st.pyplot(fig1)
 
-    with col_b:
-        st.markdown("#### 2. Conversion by Credit Card Spend & CD Account")
-        fig2 = chart_conversion_by_ccavg_cd(model_df, col_map)
-        st.pyplot(fig2)
+        with col_b:
+            st.markdown("#### 2. Conversion by Credit Card Spend & CD Account")
+            fig2 = chart_conversion_by_ccavg_cd(model_df, col_map)
+            st.pyplot(fig2)
 
-    col_c, col_d = st.columns(2)
+        col_c, col_d = st.columns(2)
 
-    with col_c:
-        st.markdown("#### 3. Conversion Heatmap: Age Band vs Family Size")
-        fig3 = chart_heatmap_age_family(model_df, col_map)
-        st.pyplot(fig3)
+        with col_c:
+            st.markdown("#### 3. Conversion Heatmap: Age Band vs Family Size")
+            fig3 = chart_heatmap_age_family(model_df, col_map)
+            st.pyplot(fig3)
 
-    with col_d:
-        st.markdown("#### 4. Digital & Card Segments: Conversion & Volume")
-        fig4 = chart_online_creditcard_segments(model_df, col_map)
-        st.pyplot(fig4)
+        with col_d:
+            st.markdown("#### 4. Digital & Card Segments: Conversion & Volume")
+            fig4 = chart_online_creditcard_segments(model_df, col_map)
+            st.pyplot(fig4)
 
-    st.markdown("#### 5. Correlation of Features with Personal Loan")
-    fig5 = chart_feature_corr_with_target(model_df, col_map, feature_cols)
-    st.pyplot(fig5)
+        st.markdown("#### 5. Correlation of Features with Personal Loan")
+        fig5 = chart_feature_corr_with_target(model_df, col_map, feature_cols)
+        st.pyplot(fig5)
 
-    st.info(
-        "Focus campaigns on segments with high conversion rate but medium customer count "
-        "(e.g. high-income + advanced education, high CCAvg + CDAccount) to get quick wins."
-    )
+        st.info(
+            "Focus campaigns on segments with high conversion rate but medium customer count "
+            "(e.g. high-income + advanced education, high CCAvg + CDAccount) to get quick wins."
+        )
 
 
 # ---- TAB 2: Model Performance ----
 with tab2:
     st.subheader("Apply All Three Algorithms & Compare Performance")
-    st.markdown('''
+    if X is None or y is None:
+        st.error("Base dataset is missing. Please ensure 'UniversalBank.csv' is in the same folder as app.py in your GitHub repo.")
+    else:
+        st.markdown('''
 Click the button below to train **Decision Tree**, **Random Forest** and
 **Gradient Boosting** on the Universal Bank data, using 70/30 train-test split and
 **5-fold cross validation** on the training set.
 ''')
 
-    if st.button("🚀 Run / Re-run Models"):
-        (
-            metrics_df,
-            models,
-            roc_curves,
-            conf_matrices,
-            feature_importances,
-            split_data,
-        ) = train_and_evaluate_models(X, y)
+        if st.button("🚀 Run / Re-run Models"):
+            (
+                metrics_df,
+                models,
+                roc_curves,
+                conf_matrices,
+                feature_importances,
+                split_data,
+            ) = train_and_evaluate_models(X, y)
 
-        st.markdown("### 1. Performance Summary Table")
-        st.dataframe(metrics_df.style.format("{:.4f}"))
+            st.markdown("### 1. Performance Summary Table")
+            st.dataframe(metrics_df.style.format("{:.4f}"))
 
-        st.markdown("### 2. ROC Curve (Test Set, All Models)")
-        fig_roc = plot_roc_curves(roc_curves)
-        st.pyplot(fig_roc)
+            st.markdown("### 2. ROC Curve (Test Set, All Models)")
+            fig_roc = plot_roc_curves(roc_curves)
+            st.pyplot(fig_roc)
 
-        st.markdown("### 3. Confusion Matrices (Train & Test)")
-        fig_cm = plot_confusion_matrices(conf_matrices)
-        st.pyplot(fig_cm)
+            st.markdown("### 3. Confusion Matrices (Train & Test)")
+            fig_cm = plot_confusion_matrices(conf_matrices)
+            st.pyplot(fig_cm)
 
-        st.markdown("### 4. Feature Importances")
-        fig_fi = plot_feature_importances(feature_importances, feature_cols)
-        st.pyplot(fig_fi)
+            st.markdown("### 4. Feature Importances")
+            fig_fi = plot_feature_importances(feature_importances, feature_cols)
+            st.pyplot(fig_fi)
 
-        st.info(
-            "Use the **AUC (Test)** and **Recall** columns to select the best model "
-            "for maximizing loan conversions."
-        )
-    else:
-        st.warning("Click **Run / Re-run Models** to generate metrics and charts.")
+            st.info(
+                "Use the **AUC (Test)** and **Recall** columns to select the best model "
+                "for maximizing loan conversions."
+            )
+        else:
+            st.warning("Click **Run / Re-run Models** to generate metrics and charts.")
 
 
 # ---- TAB 3: New Data Scoring ----
@@ -520,48 +543,51 @@ The app will train all three models again on the original data and then use the
         st.markdown("Preview of uploaded data:")
         st.dataframe(new_df_raw.head())
 
-        (
-            metrics_df,
-            models,
-            roc_curves,
-            conf_matrices,
-            feature_importances,
-            split_data,
-        ) = train_and_evaluate_models(X, y)
-
-        best_algo = metrics_df["AUC (Test)"].idxmax()
-        best_model = models[best_algo]
-        st.success(f"Best model based on AUC(Test): **{best_algo}**")
-
-        missing_cols = [c for c in feature_cols if c not in new_df.columns]
-        if missing_cols:
-            st.error(
-                "Uploaded file is missing the following required columns (after cleaning): "
-                + ", ".join(missing_cols)
-            )
+        if X is None or y is None:
+            st.error("Base dataset is missing, so models cannot be trained. Ensure 'UniversalBank.csv' is in the same folder as app.py.")
         else:
-            X_new = new_df[feature_cols]
-            proba = best_model.predict_proba(X_new)[:, 1]
-            pred = (proba >= 0.5).astype(int)
+            (
+                metrics_df,
+                models,
+                roc_curves,
+                conf_matrices,
+                feature_importances,
+                split_data,
+            ) = train_and_evaluate_models(X, y)
 
-            scored = new_df_raw.copy()
-            scored["PredictedPersonalLoan"] = pred
-            scored["LoanProbability"] = proba
+            best_algo = metrics_df["AUC (Test)"].idxmax()
+            best_model = models[best_algo]
+            st.success(f"Best model based on AUC(Test): **{best_algo}**")
 
-            st.markdown("### Sample of Scored Customers")
-            st.dataframe(scored.head())
+            missing_cols = [c for c in feature_cols if c not in new_df.columns]
+            if missing_cols:
+                st.error(
+                    "Uploaded file is missing the following required columns (after cleaning): "
+                    + ", ".join(missing_cols)
+                )
+            else:
+                X_new = new_df[feature_cols]
+                proba = best_model.predict_proba(X_new)[:, 1]
+                pred = (proba >= 0.5).astype(int)
 
-            csv_bytes = scored.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Download Scored File (CSV)",
-                data=csv_bytes,
-                file_name="scored_customers_with_personal_loan_prediction.csv",
-                mime="text/csv",
-            )
+                scored = new_df_raw.copy()
+                scored["PredictedPersonalLoan"] = pred
+                scored["LoanProbability"] = proba
 
-            st.info(
-                "Filter customers with **LoanProbability >= 0.7** to build a "
-                "high-propensity campaign list."
-            )
+                st.markdown("### Sample of Scored Customers")
+                st.dataframe(scored.head())
+
+                csv_bytes = scored.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download Scored File (CSV)",
+                    data=csv_bytes,
+                    file_name="scored_customers_with_personal_loan_prediction.csv",
+                    mime="text/csv",
+                )
+
+                st.info(
+                    "Filter customers with **LoanProbability >= 0.7** to build a "
+                    "high-propensity campaign list."
+                )
     else:
         st.warning("Please upload a CSV file to score new customers.")
