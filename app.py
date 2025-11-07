@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -67,6 +66,7 @@ def prepare_features(df: pd.DataFrame):
     if target_col is None:
         raise ValueError("Could not find 'Personal Loan' column in data.")
 
+    # drop ID if present
     drop_cols = [c for c in [col_map["ID"]] if c is not None]
 
     feature_cols = [
@@ -165,7 +165,7 @@ def train_and_evaluate_models(X, y):
     )
 
 
-# ------- Plotting helpers -------
+# ---------------- Plotting helpers ----------------
 def plot_roc_curves(roc_curves):
     fig, ax = plt.subplots(figsize=(7, 5))
     for name, (fpr, tpr, auc_val) in roc_curves.items():
@@ -195,7 +195,7 @@ def plot_confusion_matrices(conf_matrices):
         for j, split in enumerate(splits):
             cm = conf_matrices[algo][split]
             ax = axes[i, j]
-            im = ax.imshow(cm, cmap="Blues")
+            ax.imshow(cm, cmap="Blues")
             ax.set_title(f"{algo} - {split.capitalize()}")
             ax.set_xlabel("Predicted label")
             ax.set_ylabel("True label")
@@ -243,7 +243,7 @@ def plot_feature_importances(feature_importances, feature_names):
     return fig
 
 
-# ------- EDA charts -------
+# ---------------- EDA charts ----------------
 def chart_conversion_by_income_education(df, col_map):
     df = df.copy()
     income_col = col_map["Income"]
@@ -395,17 +395,15 @@ def chart_feature_corr_with_target(model_df, col_map, feature_cols):
     return fig
 
 
-# ---------------- MAIN APP ----------------
+# ---------------- MAIN APP LAYOUT ----------------
 st.title("Personal Loan Propensity & Customer Insight Dashboard")
 
-st.markdown(
-    \"\"\"
+st.markdown('''
 As **Head of Marketing**, use this app to:
 - Understand which customer segments are most likely to accept a *personal loan*.
 - Compare machine learning models (Decision Tree, Random Forest, Gradient Boosting).
 - Score new customer lists and download predictions for campaigns.
-\"\"\"
-)
+''')
 
 base_df = load_base_data()
 X, y, feature_cols, col_map, target_col, model_df = prepare_features(base_df)
@@ -418,15 +416,13 @@ tab1, tab2, tab3 = st.tabs(
     ]
 )
 
-# ---- TAB 1 ----
+# ---- TAB 1: Customer Insights ----
 with tab1:
     st.subheader("Customer Insights for Better Marketing Actions")
-    st.markdown(
-        \"\"\"
+    st.markdown('''
 Below charts combine multiple variables so that you can design **sharper targeting rules**,
 e.g. *income × education*, *digital usage × cards*, etc.
-\"\"\"
-    )
+''')
 
     col_a, col_b = st.columns(2)
 
@@ -462,16 +458,14 @@ e.g. *income × education*, *digital usage × cards*, etc.
     )
 
 
-# ---- TAB 2 ----
+# ---- TAB 2: Model Performance ----
 with tab2:
     st.subheader("Apply All Three Algorithms & Compare Performance")
-    st.markdown(
-        \"\"\"
+    st.markdown('''
 Click the button below to train **Decision Tree**, **Random Forest** and
 **Gradient Boosting** on the Universal Bank data, using 70/30 train-test split and
 **5-fold cross validation** on the training set.
-\"\"\"
-    )
+''')
 
     if st.button("🚀 Run / Re-run Models"):
         (
@@ -506,19 +500,17 @@ Click the button below to train **Decision Tree**, **Random Forest** and
         st.warning("Click **Run / Re-run Models** to generate metrics and charts.")
 
 
-# ---- TAB 3 ----
+# ---- TAB 3: New Data Scoring ----
 with tab3:
     st.subheader("Upload New Customer File & Predict Personal Loan Propensity")
-    st.markdown(
-        \"\"\"
+    st.markdown('''
 Upload a **CSV file** with the same structure as the original UniversalBank data
 (ID, Age, Experience, Income, Family, CCAvg, Education, Mortgage, Securities, CDAccount,
 Online, CreditCard, etc.).  
 
 The app will train all three models again on the original data and then use the
 **best model (highest Test AUC)** to score the uploaded file.
-\"\"\"
-    )
+''')
 
     uploaded_file = st.file_uploader("Upload new customer CSV", type=["csv"])
 
